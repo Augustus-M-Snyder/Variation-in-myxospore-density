@@ -1,0 +1,710 @@
+---
+title: "Spore Counts"
+output: word_document
+editor_options: 
+  chunk_output_type: console
+---
+
+## Plot Graphics
+```{r}
+library(extrafont)
+#font_import() #only do this one time - it takes a while
+#loadfonts(device = "win")
+windowsFonts(Times=windowsFont("TT Times New Roman"))
+#install.packages("ggthemes")
+#install.packages("grid")
+```
+
+```{r}
+theme_Publication <- function(base_size=14, base_family="helvetica") {
+      library(grid)
+      library(ggthemes)
+      (theme_foundation(base_size=base_size, base_family=base_family)
+       + theme(plot.title = element_text(size = rel(1.2), hjust = 0.5),
+               text = element_text(),
+               panel.background = element_rect(colour = NA),
+               plot.background = element_rect(colour = NA),
+               panel.border = element_rect(colour = NA),
+               axis.title = element_text(size = rel(1.4)),
+               axis.title.y = element_text(angle=90,vjust =2,face = "bold"),
+               axis.title.x = element_text(vjust = -0.2, face = "bold"),
+               axis.text = element_text(), 
+               axis.line = element_line(colour="black"),
+               axis.ticks = element_line(),
+               panel.grid.major = element_line(colour="#f0f0f0"),
+               panel.grid.minor = element_blank(),
+               legend.key = element_rect(colour = NA),
+               legend.position = "right",
+               legend.text = element_text(size = rel(1.2)),
+               #legend.key.size= unit(0.5, "mm"),
+               #legend.spacing = unit(0.5, "mm"),
+               legend.title = element_text(face="italic", size = rel(1.4)),
+               #plot.margin=unit(c(10,5,5,5),"mm"),
+               strip.background=element_rect(colour="#f0f0f0",fill="#f0f0f0"),
+               strip.text = element_text()
+          ))
+      
+}
+
+scale_fill_Publication <- function(...){
+      library(scales)
+      discrete_scale("fill","Publication",manual_pal(values = c("#386cb0","#fdb462","#7fc97f","#ef3b2c","#662506","#a6cee3","#fb9a99","#984ea3","#ffff33")), ...)
+
+}
+
+scale_colour_Publication <- function(...){
+      library(scales)
+      discrete_scale("colour","Publication",manual_pal(values = c("#386cb0","#fdb462","#7fc97f","#ef3b2c","#662506","#a6cee3","#fb9a99","#984ea3","#ffff33")), ...)
+
+}
+```
+
+## Loading Required packages:
+```{r}
+#install.packages("plotly")
+#install.packages("hrbrthemes")
+library(ggplot2)
+library(plotly)
+library(hrbrthemes)
+library(scales)
+library(dplyr)
+#install.packages("ragg")
+library(ragg)
+#install.packages("magick")
+#library(magick)
+#install.packages("performance")
+#install.packages("see")
+library(performance)
+library(see)
+#install.packages('patchwork')
+library(patchwork)
+#install.packages("devtools")
+library(devtools)
+devtools::install_github("nicolash2/ggbrace")
+library(ggbrace)
+#install.packages("multcompView")
+library(multcompView)
+#install.packages("ggsignif")
+library(ggsignif)
+
+library(nlme)
+library(ggpubr)
+#install.packages("GGally")
+library(GGally)
+```
+
+# Prepping Spore Count Data for plotting and future manipulation
+
+## Reading in Spore Count Data
+```{r}
+# All_samples includes all count measurements for 73 individual seatrout (including uninfected individuals)
+All_samples <- read.csv("C:/Users/augus/Desktop/CofC 2019-2022/Seatrout-Parasite/Quantification of infection load/All_samples.csv")
+View(All_samples)
+
+# Right_vs_Left_allreps includes all count measurements for the 43 individuals with Left and Right estimates
+Right_vs_Left_allreps <- read.csv("C:/Users/augus/Desktop/CofC 2019-2022/Seatrout-Parasite/Quantification of infection load/Right_vs_Left_reps.csv")
+View(Right_vs_Left_allreps)
+
+# Subset of the initial samples used to compare R vs. L side differences
+Right_vs_Left_subset <- read.csv("C:/Users/augus/Desktop/CofC 2019-2022/Seatrout-Parasite/Quantification of infection load/Right vs Left.csv")
+```
+
+## Summarizing spore count data for all samples
+```{r}
+All_samples = as_tibble(All_samples)
+
+# Adding a data column for just L vs. R (irrespective of plug or Surrounding Area)
+All_samples = All_samples %>% mutate(Location = case_when(Tissue_Source == "L_plug" ~ "L", Tissue_Source == "R_plug" ~ "R", Tissue_Source == "Surr_area_L" ~ "L", Tissue_Source == "Surr_area_R" ~ "R")) 
+
+# Summarizing average counts by individual
+All_summary = All_samples %>% group_by(Sample) %>% summarize(mean_dens = mean(Myxospore_Density))
+View(All_summary)
+```
+
+## Summarizing count data for R vs. Left side counts within individuals
+```{r}
+#Grouping by sample and location
+RvL_summary1 = Right_vs_Left_allreps %>% 
+  group_by(Sample, Location) %>%
+  summarize(mean_dens = mean(Myxospore_Density), sd = sd(Myxospore_Density)) 
+
+RvL_summary1$Sample = as.factor(RvL_summary1$Sample)
+
+
+View(RvL_summary1)
+
+# Grouping by Sample only (for sample size)
+RvL_summary2 = Right_vs_Left_allreps %>% 
+  group_by(Sample) %>% 
+  summarize(mean_dens = mean(Myxospore_Density), sd = sd(Myxospore_Density))
+
+
+# Ordering sample names by average count for a descending barchart
+RvL_summary2 = RvL_summary2 %>% arrange(desc(mean_dens))
+Sample_levels = RvL_summary2$Sample
+Sample_levels
+
+View(RvL_summary2)
+```
+
+## Filtering out uninfected samples
+```{r}
+All_samples.inf = All_samples %>% filter(between(Myxospore_Density, 1, 7000000))
+View(All_samples.inf)
+```
+
+# Looking at distribution of infection load:
+## All samples, continuous dist
+```{r}
+Spores.hist = ggplot(data=All_samples, aes(x= Myxospore_Density, fill = Location))+
+  facet_wrap(~Location) +
+  geom_histogram(aes(y=stat(density)), breaks=seq(0, 5000000, by=100000),
+                 col="black",
+                 alpha=0.5) +
+                 labs(x="Myxospore Density \n (# spores / g-white muscle)", y="Percent Frequency") +
+  geom_density(color=1, size=1, alpha=0.5) + 
+  scale_fill_manual(values = c("#a6cee3", "#984ea3")) +
+  scale_y_continuous(labels = percent_format())
+    
+
+p = Spores.hist + theme_Publication() + theme(axis.text = element_text(angle = 45, hjust = 1, vjust = 1))
+p
+
+#--------Saving Plot ----------
+
+ggsave("All_samples_hist.tif", p, device = ragg::agg_tiff, res = 600,  units = "mm", scaling = 0.4, width = 81, height = 81)
+ggs <- image_read("All_samples_hist.tif")
+print(ggs)
+
+dev.off()
+```
+
+## All samples, histogram only
+```{r}
+Spores.hist2 =  ggplot(data=All_samples, aes(Myxospore_Density, fill = Location))+
+    facet_wrap(~Location) +
+  geom_histogram(breaks=seq(0, 5000000, by=100000),
+                 col="black",
+                 alpha=0.5) +
+                  labs(x="Myxospore Density \n (# spores / g-white muscle)", y="Number of Samples") +
+  scale_fill_manual(values = c("#a6cee3", "#984ea3"))
+  
+Spores.hist2
+
+p1 = Spores.hist2 + theme_Publication() + theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
+p1
+#--------Saving Plot ----------
+
+ggsave("All_samples_hist2.tif", p1, device = ragg::agg_tiff, res = 600,  units = "mm", scaling = 0.4, width = 81, height = 81)
+ggs <- image_read("All_samples_hist2.tif")
+print(ggs)
+
+dev.off()
+
+```
+
+
+## Figure 3: Infected samples histogram + density overlay (continuous distribution)
+```{r}
+Inf.hist = ggplot(data=All_samples.inf, aes(Myxospore_Density, fill = Location)) +
+  facet_wrap(~Location) +
+  geom_histogram(binwidth = 100000,
+                 col="black",
+                 alpha=0.5) +
+                 labs(x="Myxospore Density \n (# spores / g-white muscle)", y="Number of Samples") + 
+ geom_density(aes(y=..count..*100000),color=1, size=1, alpha=0.5) +
+  scale_fill_manual(values = c("#a6cee3", "#984ea3")) +
+  scale_y_continuous(breaks = pretty_breaks())
+
+
+p2 = Inf.hist + theme_Publication() + theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) +  theme(legend.position = "none")
+p2
+#--------Saving Plot ----------
+
+ggsave("INF_samples_hist.tif", p2, device = ragg::agg_tiff, res = 2000,  units = "mm", scaling = 1, width = 200, height = 162)
+
+ggs <- image_read("INF_samples_hist.tif")
+print(ggs)
+
+dev.off()
+```
+
+## Infected samples, hist only
+```{r}
+Inf.hist2 = ggplot(data=All_samples.inf, aes(Myxospore_Density, fill = Location))+
+  facet_wrap(~Location) +
+  geom_histogram(breaks=seq(0, 5000000, by=100000),
+                 col="black",
+                 alpha=0.5) +
+                  labs(x="Myxospore Density \n (# spores / g-white muscle)", y="Number of Samples") +
+  scale_y_continuous(breaks = pretty_breaks())
+  
+
+p3 = Inf.hist2 + theme_Publication() + theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) +  theme(legend.position = "none")
+p3
+#--------Saving Plot ----------
+
+ggsave("INF_samples_hist2.tif", p3, device = ragg::agg_tiff, res = 600,  units = "mm", scaling = 0.4, width = 81, height = 81)
+ggs <- image_read("INF_samples_hist2.tif")
+print(ggs)
+
+dev.off()
+```
+
+
+# ***----------------------R vs. L Comparisons-------------------------***
+
+## Methodological validation (checking variation in frozen tissue samples vs. fresh tissue samples)
+
+### Figure 2: Boxplot of plug vs. surrounding area (AAB) counts... AAB counts seem very slightly lower on average. 
+```{r}
+All_samples.inf$Tissue_Source = factor(All_samples.inf$Tissue_Source, levels = c("L_plug", "Surr_area_L", "R_plug", "Surr_area_R"))
+
+Allsamples_boxplot = ggplot(data=All_samples.inf, aes(x=Tissue_Source, y=Myxospore_Density, fill = Tissue_Source)) + 
+  geom_boxplot(show.legend=F, aes(fill = Tissue_Source, alpha = 0.5)) +
+  geom_jitter(show.legend=F,aes(fill = Tissue_Source), width = 0.2, size = 2, pch = 21) +
+  scale_color_manual(values = "black") +
+  labs(x = "Tissue Source") +
+  scale_fill_manual(values = c("#275f7d","#a6cee3", "#783d81", "#b87dc1")) +
+  labs(y="Myxospore Density \n (# spores / g-white muscle)") + 
+  scale_x_discrete(labels = c("L Plug", "L Surrounding Area", "R Plug", "R Surrounding Area"))
+
+p3b = Allsamples_boxplot + theme_Publication()
+p3b
+
+#----Saving Plot----
+ggsave("All_samples_boxplot.tif", p3b, device = ragg::agg_tiff, res = 2000,  units = "mm", scaling = 1, width = 200, height = 162)
+
+```
+
+### No difference in methods based on ANOVA results
+```{r}
+Samples_aov = aov(log1p(Myxospore_Density)~Tissue_Source, data = All_samples.inf)
+summary(Samples_aov)
+plot(Samples_aov)
+
+#               Df Sum Sq Mean Sq F value Pr(>F)
+#Tissue_Source   3   5.83   1.944   1.558  0.203
+#Residuals     131 163.53   1.248    
+
+check_model(Samples_aov)
+
+TukeyHSD(Samples_aov)
+```
+
+## Right vs. Left Analysis
+
+### Initial barchart comparing within-sample Right vs. Left infection densities on subset of samples. Between fish trends seem to hold up, but there are seemingly differences in localized infections. 
+```{r}
+RvL_barchart = ggplot(data=Right_vs_Left, aes(x=Sample, y=Myxospore_Density, fill = Tissue_Source)) + 
+  geom_col(position = "dodge", width = 0.75) + scale_y_continuous(limits = c(0, 3000000),labels = function(x) format(x, scientific = TRUE)) + 
+  geom_errorbar(aes(ymin = Myxospore_Density-SD, ymax = Myxospore_Density+SD), position = position_dodge2(width = 0.5, padding = 0.5)) + 
+  labs(y="Myxospore Density \n (# spores / g-white muscle)") + 
+  scale_fill_manual(name="Tissue Source", values = c("#a6cee3", "#984ea3"))
+
+
+
+p4 = RvL_barchart + theme_Publication() +theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
+p4
+#--------Saving Plot ----------
+
+ggsave("RvL_barchart.tif", p4, device = ragg::agg_tiff, res = 600,  units = "mm", scaling = 0.4, width = 81, height = 81)
+ggs <- image_read("RvL_barchart.tif")
+print(ggs)
+
+dev.off()
+```
+
+
+### Nested ANOVA: Testing Left vs. Right side densities within-fish as well as among-fish trends; quantifying variance at each level
+
+Visualizing the data: Figure 4 in manuscript
+```{r}
+RvL_summary1 = filter(RvL_summary1, Sample != "S2_0711") # Removing outlier sample S2_0711 due to high variation / likely inaccurate count estimates
+
+View(RvL_summary1 %>% group_by(Sample) %>% summarize(mean = mean(mean_dens))) # confirming removal
+
+# Creating a barchart of average myxospore densities for each side (intra-individual variation)
+RvL.barchart2 = ggplot(data=RvL_summary1, aes(x=Sample, y=mean_dens, fill = Location)) +
+  geom_col(position = "dodge", width = 0.75) + 
+  scale_y_continuous(limits = c(0, 5500000),labels = function(x) format(x, scientific = TRUE)) +
+  geom_errorbar(aes(ymin = mean_dens-sd, ymax = mean_dens+sd), position = position_dodge2(width = 0.5, padding = 0.5)) + 
+  labs(y="Myxospore Density \n (# spores / g-white muscle)") + 
+  scale_fill_manual(values = c("#a6cee3", "#984ea3"))
+
+# Adding theme elements  
+p5a = RvL.barchart2 + 
+  theme_Publication() + 
+  theme(legend.position = c(0.9, 0.75))+
+  scale_x_discrete(expand = expansion(mult = 0.005, add = 0.5)) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),axis.ticks.length = unit(1, "mm")) 
+p5a
+#--------Saving Plot ----------
+
+
+ggsave("RvL_barchart2.tif", p5, device = ragg::agg_tiff, res = 2000,  units = "mm", scaling = 0.50, width = 125, height = 75)
+
+ggs <- image_read("RvL_barchart2.tif")
+print(ggs)
+
+dev.off()
+```
+
+```{r}
+# Making the same barchart but just for samples between 3e5 and 1e6 spores/g
+
+# Using the same samples as are in the rank-rank plot below:
+Filter.dat = RvL_summary1[RvL_summary1$Sample %in% Ranks.mid_dens$Sample, ] %>% arrange(desc(mean_dens))
+
+RvL.barchart3 = ggplot(data=Filter.dat, aes(x=Sample, y=mean_dens, fill = Location)) +
+  geom_col(position = "dodge", width = 0.75) + 
+ scale_y_continuous(limits = c(0, 1250000),labels = function(x) format(x, scientific = TRUE)) +
+ geom_errorbar(aes(ymin = mean_dens-sd, ymax = mean_dens+sd), position = position_dodge2(width = 0.5, padding = 0.5)) + 
+ labs(y="Myxospore Density \n (# spores / g-white muscle)") + 
+ scale_fill_manual(values = c("#a6cee3", "#984ea3"))
+
+# Adding theme elements  
+p5b = RvL.barchart3 + 
+  theme_Publication() + 
+  theme(legend.position = "none")+
+  scale_x_discrete(expand = expansion(mult = 0.005, add = 0.5)) +
+  theme(axis.title.y = element_blank()) +
+  theme(axis.title = element_text(size = rel(0.85), hjust = 0.5, vjust = -0.5)) +
+  theme(axis.text.x = element_text(angle = 45, 
+                                   vjust = 1, 
+                                   hjust=1,
+                                   size = rel(0.65)),
+        axis.ticks.length = unit(1, "mm")) +
+  theme(axis.text.y = element_text(size = rel(0.85)))
+p5b
+```
+
+## Figure 4: Combining Barplots with subset inlaid
+```{r}
+g = p5a + 
+  annotation_custom(ggplotGrob(p5b), xmin = 12, xmax =34, ymin = 2000000, ymax = 5500000) +
+  #geom_rect(aes(xmin = 10, xmax = 25, ymin = 8, ymax = 27), color = "black", alpha = 0) +
+  geom_rect(aes(xmin = 12, xmax = 34, ymin = 2000000, ymax = 5500000), color='black', linetype='dashed', alpha=0)
+ #geom_path(aes(x,y, group = grp), 
+  #         data=data.frame(x = c(10,30,28,45), y=c(8,0,28,20),grp=c(1,1,2,2)), linetype='dashed')
+g
+
+#--------Saving Plot ----------
+
+
+ggsave("RvL_barchart3.tif", g, device = ragg::agg_tiff, res = 2000,  units = "mm", scaling = 0.550, width = 125, height = 75)
+
+
+```
+
+
+
+## Identification and removal of outliers: 
+
+43 individuals, at least 2 measurements performed on tissue from each side of the fish
+* S2_0720 = outlier (Jess had one count of "0", another above 0 but still low)
+* S2_0705 = outlier (highest count, 4.6 million spores / g)
+* S2_0711 = outlier (variability -- SD very high (729084.93) / counts b/w L & R not remotely close)
+
+Balanced, except for the following samples:
+* S2_0713 = extra set of measurements for Left (Surr_area)
+* S430_0801 = 4 measurements for Right (2 plug, 2 Surr_area)
+* S430_1204 = 4 measurements for Left (2 separate counts, both for L plug)
+
+```{r}
+Right_vs_Left_allreps$Sample = as.factor(Right_vs_Left_allreps$Sample)
+
+
+# Identifying outliers with respect to variation in myxospore density estimates
+qqnorm(log1p(Right_vs_Left_allreps$Myxospore_Density), datax=T)
+qqline(log1p(Right_vs_Left_allreps$Myxospore_Density), datax= T)
+qqpoints = qqnorm(log1p(Right_vs_Left_allreps$Myxospore_Density), datax=T)
+identify(qqpoints$y)
+qqpoints
+
+
+RvL.nooutliers = filter(Right_vs_Left_allreps, Sample != "S2_0711") # removes sample S2_0711
+RvL.nooutliers = filter(RvL.nooutliers, Sample != "S2_0705") # removes sample S2_0705
+RvL.nooutliers = filter(RvL.nooutliers, Sample != "S2_0720") # removes ample S2_0720
+
+
+RvL.nooutliers$Sample = as.factor(RvL.nooutliers$Sample)
+
+View(RvL.nooutliers %>% group_by(Sample) %>% summarize(mean = mean(Myxospore_Density))) # Confirming 40 samples for nested ANOVA
+```
+
+## Conducting initial Nested ANOVA tests with and without outliers for evaluating model fit
+```{r}
+RvL.nested = aov(log1p(Myxospore_Density)~ Sample / Location, data = Right_vs_Left_allreps)
+RvL.nested.no = aov(log1p(Myxospore_Density)~ Sample / Location, data = RvL.nooutliers)
+
+summary(RvL.nested)
+plot(RvL.nested)
+check_model(RvL.nested) # evaluating model fit, 2 points have disproportionate impacts on the model
+
+summary(RvL.nested.no)
+plot(RvL.nested.no)
+check_model(RvL.nested.no) # confirming much better model fit after removing outlier samples
+
+# Removing excess counts for balanced ANOVA design
+View(RvL.nooutliers %>% group_by(Sample, Location) %>% summarize(n = n()))
+RvL.nooutliers.bal = RvL.nooutliers %>% dplyr::slice(-(c(35, 138:139, 154:155))) # removes extra measurements for each of 3 samples listed above. 
+
+View(RvL.nooutliers.bal)
+View(RvL.nooutliers.bal %>% group_by(Sample, Location) %>% summarize(n = n()))
+```
+
+
+## Performing the Nested ANOVA & quantifying variation within and among individuals:
+
+```{r}
+RvL.nested.no.bal = aov(log1p(Myxospore_Density)~ Sample / Location, data = RvL.nooutliers.bal)
+summary(RvL.nested.no.bal)
+plot(RvL.nested.no.bal)
+
+check_model(RvL.nested.no.bal) # Greater variance at lower ends of infection
+shapiro.test(log1p(RvL.nooutliers.bal$Myxospore_Density))
+
+fval_sample = (3.182/0.544) # avoiding pseudoreplication
+fval_sample
+pval_sample = 1 - pf(fval_sample,39,40)
+pval_sample
+
+s2.grp <- (3.182 - 0.544)/(2*2)
+s2.subgrp <- (0.544 - 0.054)/2
+s2 <- 0.054
+pct.grp <- 100*s2.grp/(s2.grp+s2.subgrp+s2)
+pct.grp # 68.805 = % variation among individuals
+pct.subgrp <- 100*s2.subgrp/(s2.grp+s2.subgrp+s2)
+pct.subgrp # 25.5608 % variation within individuals
+pct.resid <- 100*s2/(s2.grp+s2.subgrp+s2)
+pct.resid # 5.6338 % unexplained variation
+```
+
+
+Summary stats for Right vs. Left:
+```{r}
+RvL_summary_stats = Right_vs_Left_allreps %>% filter(between(Myxospore_Density, 1, 7000000)) %>% group_by(Tissue.Source) %>% summarize(N = n(),mean_dens = 
+mean(Myxospore_Density), sd = sd(Myxospore_Density), min = min(Myxospore_Density), max = max(Myxospore_Density)) 
+```
+
+
+# ***------------------ Resample Test ----------------- ***
+
+## Building mixed effects linear models
+```{r}
+## Arranging data according to their rank-orders (descending myxospore density)
+View(RvL.nooutliers.bal)
+RvL.nooutliers.bal$Sample = as.factor(RvL.nooutliers.bal$Sample)
+RvL.nooutliers.bal_sum = RvL.nooutliers.bal %>% 
+  group_by(Sample) %>% 
+  summarize(Mean_dens = mean(Myxospore_Density)) %>%
+  arrange(desc(Mean_dens))
+View(RvL.nooutliers.bal_sum)
+
+# Building Mixed effects models, 1 with grouping by individuals (non-random slopes) and 2 with random slopes. If model 1 has a significantly better fit, then it means that the same individuals differed significantly with respect to side tissue was taken from (i.e., rank order changes). 
+
+lm1 <- lme(Myxospore_Density ~ Location, random = ~ Location | Sample, data = RvL.nooutliers.bal)
+lm2<- lme(Myxospore_Density ~ Location, random = ~ 1 | Sample, data = RvL.nooutliers.bal)
+anova(lm2,lm1)
+
+#     Model df      AIC      BIC    logLik   Test  L.Ratio p-value
+#lm2     1  4 4513.906 4526.157 -2252.953                        
+#lm1     2  6 4464.070 4482.446 -2226.035 1 vs 2 53.83594  <.0001
+
+```
+
+
+## Resample test: To randomly sample from the 4 measurements per individual, with replacement, and repeat this test many times
+```{r}
+# Better to repeat test and see how many times it returns the same result?
+# OR, iterate over data set 1000 times and then repeat the test on the larger data set?
+
+# Resampling function:
+SampDist = function(df) {
+  New_dist = data.frame(matrix(ncol=5,nrow=0))
+  colnames(New_dist) = names(df)
+  for (i in 1:1000)
+  {
+  samp = df %>% 
+    group_by(Sample,Location) %>% 
+    slice_sample(n=1, replace = T) # randomly selects 1 of the two measurements per side for each individual
+  New_dist <- rbind(New_dist, samp) # binds
+  }
+return(tibble(New_dist))
+  }
+
+# Applying function to the 40 individuals with 2 measurements per side:
+My_new_dist = SampDist(RvL.nooutliers.bal)
+View(My_new_dist)
+
+# Applying mixed-effects models to test whether sampling location matters:
+lm1.1 <- lme(Myxospore_Density ~ Location, random = ~ Location | Sample, data = My_new_dist,  control = lmeControl(opt = "optim"))
+lm2.2<- lme(Myxospore_Density ~ Location, random = ~ 1 | Sample, data = My_new_dist,control = lmeControl(opt = "optim"))
+anova(lm2.2,lm1.1)
+
+#      Model df     AIC     BIC   logLik   Test  L.Ratio p-value
+#lm2.2     1  4 2185466 2185503 -1092729                        
+#lm1.1     2  6 2067643 2067699 -1033815 1 vs 2 117827.1  <.0001
+
+logLRT = 2*((1092729) - (1033815))
+logLRT
+#[1] 117828 -- matches above
+
+New_dist_summary = My_new_dist %>% 
+  group_by(Sample) %>% 
+  summarize(Mean_dens = mean(Myxospore_Density)) %>%
+  arrange(desc(Mean_dens))
+View(New_dist_summary)
+```
+
+## Processing data for Kendall Test
+```{r}
+# Overall sample rankings:
+RvL.nooutliers.bal_sum$Rank = NA
+order.densities = order(RvL.nooutliers.bal_sum$Mean_dens, RvL.nooutliers.bal_sum$Sample)
+order.densities
+RvL.nooutliers.bal_sum$Rank[order.densities] = 1:nrow(RvL.nooutliers.bal_sum)
+View(RvL.nooutliers.bal_sum)
+
+# Ranks for Right and Left sides
+
+## Filtering out left-side estimates:
+Rights = RvL.nooutliers.bal %>% 
+  group_by(Sample, Location) %>% 
+  summarize(Mean_dens = mean(Myxospore_Density)) %>%
+  arrange(desc(Mean_dens)) %>% filter(Location != "Left")
+
+## Filtering out right-side estimates:
+Lefts = RvL.nooutliers.bal %>% 
+  group_by(Sample, Location) %>% 
+  summarize(Mean_dens = mean(Myxospore_Density)) %>%
+  arrange(desc(Mean_dens)) %>% filter(Location != "Right")
+
+# Viewing data subsets:
+View(Rights)
+View(Lefts)
+
+# Adding "Rank" columns:
+## Right ranks
+Rights$R_Ranks = NA
+order.densities.R = order(Rights$Mean_dens, Rights$Sample)
+Rights$R_Ranks[order.densities] = 1:nrow(Rights)
+View(Rights)
+
+## Left ranks
+Lefts$L_Ranks = NA
+order.densities.L = order(Lefts$Mean_dens, Lefts$Sample)
+Lefts$L_Ranks[order.densities] = 1:nrow(Lefts)
+View(Lefts)
+```
+
+## Kendall Correlation and rank-rank plot:
+```{r}
+# Kendall test using cor.test()
+Ranks = merge(Rights, Lefts, by.x = c("Sample"), by.y = c("Sample"))
+
+result = cor.test(x = Ranks$Mean_dens.x, y = Ranks$Mean_dens.y, method = "kendall")
+print(result)
+
+#	Kendall's rank correlation tau
+
+#data:  Ranks.df$Mean_dens.x and Ranks.df$Mean_dens.y
+#z = 5.6632, p-value = 1.486e-08
+#alternative hypothesis: true tau is not equal to 0
+#sample estimates:
+#      tau 
+#0.6238768 
+label = "Kendall's Tau = 0.62388    p-value <0.0001"
+
+Ranks.plot1 = ggplot(Ranks, aes(x = R_Ranks, y = L_Ranks)) +
+  geom_point() +
+  labs(y = "Left-side Ranks") + 
+  labs(x = "Right-side Ranks") + 
+  geom_abline(slope = 1,
+              intercept = 0, 
+              color = "blue") +
+  #stat_cor(method = "kendall", label.x = 5, label.y = 35) +
+  annotate("label", x = 12, y = 35, label = label)
+
+p6a = Ranks.plot1 + theme_Publication()
+
+#----Saving Plot----
+ggsave("Kendall Cor Plot1.tif", p6a, device = ragg::agg_tiff, res = 2000,  units = "mm", scaling = 0.50, width = 125, height = 75)
+```
+
+## Figure 6: Same as above, but adding an inlaid plot for subset of samples between 3e5 - 1e6 spores/g
+```{r}
+Ranks.mid_dens = Ranks %>% 
+  filter(between(Mean_dens.x, 300000,1000000)) %>% 
+  filter(between(Mean_dens.y, 300000,1000000))
+
+result = cor.test(x = Ranks.mid_dens$Mean_dens.x, y = Ranks.mid_dens$Mean_dens.y, method = "kendall")
+print(result)
+
+#data:  Ranks.mid_dens$Mean_dens.x and Ranks.mid_dens$Mean_dens.y
+#z = 0.69367, p-value = 0.4879
+#alternative hypothesis: true tau is not equal to 0
+#sample estimates:
+#      tau 
+#0.1339728 
+
+label2 = "Kendall's Tau = 0.11397  p = 0.4879"
+
+Ranks.plot2 = ggplot(Ranks.mid_dens, aes(x = R_Ranks, y = L_Ranks)) +
+  geom_point() +
+  labs(y = "Left-side Ranks") + 
+  labs(x = "Right-side Ranks") + 
+  annotate("label", x = 19, y = 30, label = label2, size = 2.4)
+
+p6b = Ranks.plot2 + theme_Publication() + theme(axis.title = element_text(size =rel(0.65)))
+
+g2 = p6a + 
+  annotation_custom(ggplotGrob(p6b), xmin = 30, xmax = 48, ymin = 0, ymax = 20) +
+  #geom_rect(aes(xmin = 10, xmax = 25, ymin = 8, ymax = 27), color = "black", alpha = 0) +
+  geom_rect(aes(xmin = 30, xmax = 48, ymin = 0, ymax = 20), color='black', linetype='dashed', alpha=0)
+ #geom_path(aes(x,y, group = grp), 
+  #         data=data.frame(x = c(10,30,28,45), y=c(8,0,28,20),grp=c(1,1,2,2)), linetype='dashed')
+g2
+
+# ----Saving Plot-----
+ggsave("Kendall Cor Plot2.tif", g2, device = ragg::agg_tiff, res = 2000,  units = "mm", scaling = 0.650, width = 125, height = 75)
+```
+
+## Figure 6: Parallel Coordinates Plot
+```{r}
+PC.df = rbind(Rights,Lefts)
+PC.plot = ggplot(PC.df, aes(x = Location, y = Mean_dens, group = Sample)) +
+  geom_point(aes(shape = Location), size = 3) +
+  scale_shape_manual(values = c(21, 19)) +
+  labs(x = "Sample Location", y = "Myxospore Density \n (# spores / g-white muscle)") +
+  geom_line(color = "red") 
+
+p7 = PC.plot + theme_Publication() +
+  theme(legend.position = "none")
+
+# ----Saving Plot-----
+ggsave("Parallel_Coordinates.tif", p7, device = ragg::agg_tiff, res = 2000,  units = "mm", scaling = 0.650, width = 125, height = 75)
+```
+
+## Figure 7: Supplementary Barchart comparing differences in localized infections... Confirming that between-fish trends hold up, yet tissue from same region tends to have more similar infection load (couple of exceptions -- e.g., S430 0801, plug counted by Talmadge, could be overestimate)
+```{r}
+# Finer scale comparisons of varibability in plug vs. surrounding area counts
+Nested_samples <- read.csv("C:/Users/augus/Desktop/CofC 2019-2022/Seatrout-Parasite/Quantification of infection load/Nested_samples.csv")
+
+Nested_samples$Tissue_Source = factor(Nested_samples$Tissue_Source, levels = c("L_plug", "Surr_area_L", "R_plug", "Surr_area_R"))
+
+Nested_barchart = ggplot(data=Nested_samples, aes(x=Sample, y=Myxospore_Density, fill = Tissue_Source)) + geom_col(position = "dodge", width = 0.75) + scale_y_continuous(limits = c(0, 3150000),labels = function(x) format(x, scientific = TRUE)) + geom_errorbar(aes(ymin = Myxospore_Density-SD, ymax = Myxospore_Density+SD), position = position_dodge2(width = 0.5, padding = 0.5)) +  scale_fill_manual(name="Tissue Source", values = c("#a6cee3","#A2D9CE","#566573", "#E59866" ))
+
+
+
+p8 = Nested_barchart + theme_Publication() +theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
+p8
+#--------Saving Plot ----------
+
+ggsave("Nested_barchart.tif", p8, device = ragg::agg_tiff, res = 600,  units = "mm", scaling = 0.4, width = 81, height = 81)
+ggs <- image_read("Nested_barchart.tif")
+print(ggs)
+
+dev.off()
+```
