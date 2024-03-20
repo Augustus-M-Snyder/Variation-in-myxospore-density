@@ -129,6 +129,8 @@ RvL_summary1 = Right_vs_Left_allreps %>%
   summarize(mean_dens = mean(Myxospore_Density), sd = sd(Myxospore_Density)) 
 
 RvL_summary1$Sample = as.factor(RvL_summary1$Sample)
+RvL_summary1 = RvL_summary1 %>% arrange(desc(mean_dens))
+
 
 
 View(RvL_summary1)
@@ -261,7 +263,7 @@ dev.off()
 All_samples.inf$Tissue_Source = factor(All_samples.inf$Tissue_Source, levels = c("L_plug", "Surr_area_L", "R_plug", "Surr_area_R"))
 
 Allsamples_boxplot = ggplot(data=All_samples.inf, aes(x=Tissue_Source, y=Myxospore_Density, fill = Tissue_Source)) + 
-  geom_boxplot(show.legend=F, aes(fill = Tissue_Source, alpha = 0.5)) +
+  geom_boxplot(show.legend=F, aes(fill = Tissue_Source, alpha = 0.5), outlier.shape = NA) +
   geom_jitter(show.legend=F,aes(fill = Tissue_Source), width = 0.2, size = 2, pch = 21) +
   scale_color_manual(values = "black") +
   labs(x = "Tissue Source") +
@@ -322,15 +324,22 @@ Visualizing the data: Figure 4 in manuscript
 ```{r}
 RvL_summary1 = filter(RvL_summary1, Sample != "S2_0711") # Removing outlier sample S2_0711 due to high variation / likely inaccurate count estimates
 
+RvL_summary1
+
 View(RvL_summary1 %>% group_by(Sample) %>% summarize(mean = mean(mean_dens))) # confirming removal
 
 # Creating a barchart of average myxospore densities for each side (intra-individual variation)
+
+RvL_summary1$Sample = with(RvL_summary1, reorder(Sample, mean_dens, decreasing = T))
+View(RvL_summary1)
+  
 RvL.barchart2 = ggplot(data=RvL_summary1, aes(x=Sample, y=mean_dens, fill = Location)) +
   geom_col(position = "dodge", width = 0.75) + 
   scale_y_continuous(limits = c(0, 5500000),labels = function(x) format(x, scientific = TRUE)) +
   geom_errorbar(aes(ymin = mean_dens-sd, ymax = mean_dens+sd), position = position_dodge2(width = 0.5, padding = 0.5)) + 
   labs(y="Myxospore Density \n (# spores / g-white muscle)") + 
   scale_fill_manual(values = c("#a6cee3", "#984ea3"))
+RvL.barchart2
 
 # Adding theme elements  
 p5a = RvL.barchart2 + 
@@ -342,59 +351,12 @@ p5a
 #--------Saving Plot ----------
 
 
-ggsave("RvL_barchart2.tif", p5, device = ragg::agg_tiff, res = 2000,  units = "mm", scaling = 0.50, width = 125, height = 75)
+ggsave("RvL_barchart2.tif", p5a, device = ragg::agg_tiff, res = 2000,  units = "mm", scaling = 0.50, width = 125, height = 75)
 
 ggs <- image_read("RvL_barchart2.tif")
 print(ggs)
 
 dev.off()
-```
-
-```{r}
-# Making the same barchart but just for samples between 3e5 and 1e6 spores/g
-
-# Using the same samples as are in the rank-rank plot below:
-Filter.dat = RvL_summary1[RvL_summary1$Sample %in% Ranks.mid_dens$Sample, ] %>% arrange(desc(mean_dens))
-
-RvL.barchart3 = ggplot(data=Filter.dat, aes(x=Sample, y=mean_dens, fill = Location)) +
-  geom_col(position = "dodge", width = 0.75) + 
- scale_y_continuous(limits = c(0, 1250000),labels = function(x) format(x, scientific = TRUE)) +
- geom_errorbar(aes(ymin = mean_dens-sd, ymax = mean_dens+sd), position = position_dodge2(width = 0.5, padding = 0.5)) + 
- labs(y="Myxospore Density \n (# spores / g-white muscle)") + 
- scale_fill_manual(values = c("#a6cee3", "#984ea3"))
-
-# Adding theme elements  
-p5b = RvL.barchart3 + 
-  theme_Publication() + 
-  theme(legend.position = "none")+
-  scale_x_discrete(expand = expansion(mult = 0.005, add = 0.5)) +
-  theme(axis.title.y = element_blank()) +
-  theme(axis.title = element_text(size = rel(0.85), hjust = 0.5, vjust = -0.5)) +
-  theme(axis.text.x = element_text(angle = 45, 
-                                   vjust = 1, 
-                                   hjust=1,
-                                   size = rel(0.65)),
-        axis.ticks.length = unit(1, "mm")) +
-  theme(axis.text.y = element_text(size = rel(0.85)))
-p5b
-```
-
-## Figure 4: Combining Barplots with subset inlaid
-```{r}
-g = p5a + 
-  annotation_custom(ggplotGrob(p5b), xmin = 12, xmax =34, ymin = 2000000, ymax = 5500000) +
-  #geom_rect(aes(xmin = 10, xmax = 25, ymin = 8, ymax = 27), color = "black", alpha = 0) +
-  geom_rect(aes(xmin = 12, xmax = 34, ymin = 2000000, ymax = 5500000), color='black', linetype='dashed', alpha=0)
- #geom_path(aes(x,y, group = grp), 
-  #         data=data.frame(x = c(10,30,28,45), y=c(8,0,28,20),grp=c(1,1,2,2)), linetype='dashed')
-g
-
-#--------Saving Plot ----------
-
-
-ggsave("RvL_barchart3.tif", g, device = ragg::agg_tiff, res = 2000,  units = "mm", scaling = 0.550, width = 125, height = 75)
-
-
 ```
 
 
@@ -407,7 +369,7 @@ ggsave("RvL_barchart3.tif", g, device = ragg::agg_tiff, res = 2000,  units = "mm
 * S2_0711 = outlier (variability -- SD very high (729084.93) / counts b/w L & R not remotely close)
 
 Balanced, except for the following samples:
-* S2_0713 = extra set of measurements for Left (Surr_area)
+* S2_0713 = extra measurement for Left (Surr_area)
 * S430_0801 = 4 measurements for Right (2 plug, 2 Surr_area)
 * S430_1204 = 4 measurements for Left (2 separate counts, both for L plug)
 
@@ -449,6 +411,8 @@ check_model(RvL.nested.no) # confirming much better model fit after removing out
 # Removing excess counts for balanced ANOVA design
 View(RvL.nooutliers %>% group_by(Sample, Location) %>% summarize(n = n()))
 RvL.nooutliers.bal = RvL.nooutliers %>% dplyr::slice(-(c(35, 138:139, 154:155))) # removes extra measurements for each of 3 samples listed above. 
+# samples: S2_0713, S430_0801, S430_1204
+# S430_1204 has 4 measurements of L plug (2 separate digestions with duplicates counts for each). The pair of duplicates with greater values was removed due to suspected error in record keeping for this sample (unsure which side was counted / how it was counted twice).
 
 View(RvL.nooutliers.bal)
 View(RvL.nooutliers.bal %>% group_by(Sample, Location) %>% summarize(n = n()))
@@ -599,6 +563,57 @@ Lefts$L_Ranks[order.densities] = 1:nrow(Lefts)
 View(Lefts)
 ```
 
+```{r}
+# Making the same barchart but just for samples between 3e5 and 1e6 spores/g
+
+Ranks.mid_dens = Ranks %>% 
+  filter(between(Mean_dens.x, 300000,1000000)) %>% 
+  filter(between(Mean_dens.y, 300000,1000000))
+
+
+# Using the same samples as are in the rank-rank plot below:
+Filter.dat = RvL_summary1[RvL_summary1$Sample %in% Ranks.mid_dens$Sample, ] %>% arrange(desc(mean_dens))
+
+RvL.barchart3 = ggplot(data=Filter.dat, aes(x=Sample, y=mean_dens, fill = Location)) +
+  geom_col(position = "dodge", width = 0.75) + 
+ scale_y_continuous(limits = c(0, 1250000),labels = function(x) format(x, scientific = TRUE)) +
+ geom_errorbar(aes(ymin = mean_dens-sd, ymax = mean_dens+sd), position = position_dodge2(width = 0.5, padding = 0.5)) + 
+ labs(y="Myxospore Density \n (# spores / g-white muscle)") + 
+ scale_fill_manual(values = c("#a6cee3", "#984ea3"))
+
+# Adding theme elements  
+p5b = RvL.barchart3 + 
+  theme_Publication() + 
+  theme(legend.position = "none")+
+  scale_x_discrete(expand = expansion(mult = 0.005, add = 0.5)) +
+  theme(axis.title.y = element_blank()) +
+  theme(axis.title = element_text(size = rel(0.85), hjust = 0.5, vjust = -0.5)) +
+  theme(axis.text.x = element_text(angle = 45, 
+                                   vjust = 1, 
+                                   hjust=1,
+                                   size = rel(0.65)),
+        axis.ticks.length = unit(1, "mm")) +
+  theme(axis.text.y = element_text(size = rel(0.85)))
+```
+
+## Figure 4: Combining Barplots with subset inlaid
+```{r}
+g = p5a + 
+  annotation_custom(ggplotGrob(p5b), xmin = 12, xmax =34, ymin = 2000000, ymax = 5500000) +
+  #geom_rect(aes(xmin = 10, xmax = 25, ymin = 8, ymax = 27), color = "black", alpha = 0) +
+  geom_rect(aes(xmin = 12, xmax = 34, ymin = 2000000, ymax = 5500000), color='black', linetype='dashed', alpha=0)
+ #geom_path(aes(x,y, group = grp), 
+  #         data=data.frame(x = c(10,30,28,45), y=c(8,0,28,20),grp=c(1,1,2,2)), linetype='dashed')
+g
+
+#--------Saving Plot ----------
+
+
+ggsave("RvL_barchart3.tif", g, device = ragg::agg_tiff, res = 2000,  units = "mm", scaling = 0.550, width = 125, height = 75)
+
+
+```
+
 ## Kendall Correlation and rank-rank plot:
 ```{r}
 # Kendall test using cor.test()
@@ -633,7 +648,7 @@ p6a = Ranks.plot1 + theme_Publication()
 ggsave("Kendall Cor Plot1.tif", p6a, device = ragg::agg_tiff, res = 2000,  units = "mm", scaling = 0.50, width = 125, height = 75)
 ```
 
-## Figure 6: Same as above, but adding an inlaid plot for subset of samples between 3e5 - 1e6 spores/g
+## Figure 5: Same as above, but adding an inlaid plot for subset of samples between 3e5 - 1e6 spores/g
 ```{r}
 Ranks.mid_dens = Ranks %>% 
   filter(between(Mean_dens.x, 300000,1000000)) %>% 
@@ -682,6 +697,7 @@ PC.plot = ggplot(PC.df, aes(x = Location, y = Mean_dens, group = Sample)) +
 
 p7 = PC.plot + theme_Publication() +
   theme(legend.position = "none")
+p7
 
 # ----Saving Plot-----
 ggsave("Parallel_Coordinates.tif", p7, device = ragg::agg_tiff, res = 2000,  units = "mm", scaling = 0.650, width = 125, height = 75)
@@ -694,11 +710,16 @@ Nested_samples <- read.csv("C:/Users/augus/Desktop/CofC 2019-2022/Seatrout-Paras
 
 Nested_samples$Tissue_Source = factor(Nested_samples$Tissue_Source, levels = c("L_plug", "Surr_area_L", "R_plug", "Surr_area_R"))
 
-Nested_barchart = ggplot(data=Nested_samples, aes(x=Sample, y=Myxospore_Density, fill = Tissue_Source)) + geom_col(position = "dodge", width = 0.75) + scale_y_continuous(limits = c(0, 3150000),labels = function(x) format(x, scientific = TRUE)) + geom_errorbar(aes(ymin = Myxospore_Density-SD, ymax = Myxospore_Density+SD), position = position_dodge2(width = 0.5, padding = 0.5)) +  scale_fill_manual(name="Tissue Source", values = c("#a6cee3","#A2D9CE","#566573", "#E59866" ))
+Nested_samples$Sample = with(Nested_samples, reorder(Sample, Myxospore_Density, decreasing = T))
+
+Nested_barchart = ggplot(data=Nested_samples, aes(x=Sample, y=Myxospore_Density, fill = Tissue_Source)) + 
+  geom_col(position = "dodge", width = 0.75) + scale_y_continuous(limits = c(0, 3150000),labels = function(x) format(x, scientific = TRUE)) + geom_errorbar(aes(ymin = Myxospore_Density-SD, ymax = Myxospore_Density+SD), position = position_dodge2(width = 0.5, padding = 0.5)) +  
+  scale_fill_manual(name="Tissue Source", values = c("#7FB3D5","#a6cee3","#984EA3", "#AF7AC5" )) +
+  labs(y="Myxospore Density \n (# spores / g-white muscle)")
 
 
 
-p8 = Nested_barchart + theme_Publication() +theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
+p8 = Nested_barchart + theme_Publication() +theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) + theme(legend.position = c(0.80, 0.75))
 p8
 #--------Saving Plot ----------
 
